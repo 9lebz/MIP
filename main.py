@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pybullet as p
 
-IS_GUI = True
+IS_GUI = False
 OWN_REG = True
 # physical params
 dt = 1 / 240
@@ -90,9 +90,11 @@ def seventh_degree_param(pos_0, pos_d, T, t):
     if t <= T:
         return (pos_0 + s * diff), \
                diff * (4 * a4 * t ** 3 + 5 * a5 * t ** 4 + 6 * a6 * t ** 5 + 7 * a7 * t ** 6), \
-               diff * (12 * a4 * t ** 2 + 20 * a5 * t ** 3 + 30 * a6 * t ** 4 + 42 * a7 * t ** 5)
+               diff * (12 * a4 * t ** 2 + 20 * a5 * t ** 3 + 30 * a6 * t ** 4 + 42 * a7 * t ** 5), \
+               diff * (24 * a4 * t + 60 * a5 * t ** 2 + 120 * a6 * t ** 3 + 210 * a7 * t ** 4)
+
     else:
-        return pos_d, 0, 0
+        return pos_d, 0, 0, 0
 
 
 def trapezoidal_scaling(pos_0, pos_d, T, t, a):
@@ -127,6 +129,8 @@ log_vel = [0]
 log_vel_d = [0]
 log_acc = [0]
 log_acc_d = [0]
+log_3 = [0]
+log_3_d = [0]
 log_ctrl = []
 u = 0
 
@@ -138,7 +142,7 @@ if OWN_REG:
                             targetVelocity=0,
                             force=0)
 e_int = 0
-prev_vel = 0
+prev_vel, prev_acc = 0, 0
 
 scaling = input('Choose method: trapezoidal or 7th_degree?')
 
@@ -156,10 +160,14 @@ while t <= maxTime:
 
     # curr_pos_d, curr_vel_d, curr_acc_d = lin_param(q0_fact, pos_d, trajTime, t)
     # curr_pos_d, curr_vel_d, curr_acc_d = cubic_param(q0_fact, pos_d, trajTime, t)
+    acc = (vel - prev_vel) / dt
     if scaling == 'trapezoidal':
         curr_pos_d, curr_vel_d, curr_acc_d = trapezoidal_scaling(q0_fact, pos_d, trajTime, t, 5 / trajTime ** 2)
     else:
-        curr_pos_d, curr_vel_d, curr_acc_d = seventh_degree_param(q0_fact, pos_d, trajTime, t)
+        curr_pos_d, curr_vel_d, curr_acc_d, curr_3_d = seventh_degree_param(q0_fact, pos_d, trajTime, t)
+        log_3.append((acc - prev_acc) / dt)
+        log_3_d.append(curr_3_d)
+        prev_acc = acc
     u = feedback_lin(pos, vel, curr_pos_d, curr_vel_d, curr_acc_d)
 
     # du = feedback_ast(pos, vel)
@@ -181,7 +189,7 @@ while t <= maxTime:
     # log_pos[idx] = pos
     log_pos.append(pos)
     log_vel.append(vel)
-    log_acc.append((vel - prev_vel) / dt)
+    log_acc.append(acc)
     log_pos_d.append(curr_pos_d)
     log_vel_d.append(curr_vel_d)
     log_acc_d.append(curr_acc_d)
@@ -195,30 +203,38 @@ p.disconnect()
 # show plots
 # position plot
 
-plt.subplot(4, 1, 1)
+plt.subplot(5, 1, 1)
 plt.plot(log_time, log_pos, label='sim_pos')
 plt.plot(log_time, log_pos_d, label='ref_pos')
 plt.grid(True)
 plt.legend()
 
 # velocity plot
-plt.subplot(4, 1, 2)
+plt.subplot(5, 1, 2)
 plt.plot(log_time, log_vel, label='sim_vel')
 plt.plot(log_time, log_vel_d, label='ref_vel')
 plt.grid(True)
 plt.legend()
 
 # acceleration plot
-plt.subplot(4, 1, 3)
+plt.subplot(5, 1, 3)
 plt.plot(log_time, log_acc, label='sim_acc')
 plt.plot(log_time, log_acc_d, label='ref_acc')
 plt.grid(True)
 plt.legend()
 
 # control plot
-plt.subplot(4, 1, 4)
+plt.subplot(5, 1, 4)
 plt.plot(log_time[0:-1], log_ctrl, label='control')
 plt.grid(True)
 plt.legend()
+
+# 3 plot
+if len(log_3) > 1:
+    plt.subplot(5, 1, 5)
+    plt.plot(log_time, log_3, label='sim_3')
+    plt.plot(log_time, log_3_d, label='ref_3')
+    plt.grid(True)
+    plt.legend()
 
 plt.show()
